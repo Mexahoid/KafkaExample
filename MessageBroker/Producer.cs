@@ -1,14 +1,20 @@
 ﻿namespace MessageBroker;
 
-public class Producer<TV>
+public class Producer<TK, TV>
 {
-    public void SendMessage(string topic, TV message)
+    private readonly MessageBus<TK, TV> _host;
+    public Producer(MessageBus<TK, TV> mb)
     {
-        MessageBus<TV>.Instance.SendMessage(topic, message);
+        _host = mb;
     }
 
-    public async Task SendMessageAsync(string topic, TV message)
+    public void SendMessage(string topic, TK key, TV message)
     {
-        await MessageBus<TV>.Instance.SendMessageAsync(topic, message);
+        _host.SendMessage(topic, key, message);
+    }
+
+    public async Task SendMessageAsync(string topic, TK key, TV message)
+    {
+        await _host.SendMessageAsync(topic, key, message);
     }
 }

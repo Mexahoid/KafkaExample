@@ -1,40 +1,47 @@
 ﻿using MessageBroker;
+using Newtonsoft.Json;
 
 namespace MainApp;
 
 public class Program
 {
-    private static readonly MessageBus<string> MsgBus = MessageBus<string>.Instance;
+    private static MessageBus<string, string> _msgBus = null!;
 
     private const string TopicCmdName = "requests";
     private const string TopicGirls = "girls";
     private const string TopicBoys = "gachi";
+    private const string TopicNumbers = "numbers";
 
-    private static Producer<string> _producer = null!;
+    private static Producer<string, string> _producer = null!;
 
     private static async Task Prerequisites()
     {
-        var topics = MsgBus.GetTopics();
+        var topics = _msgBus.GetTopics();
 
         if (!topics.Contains(TopicCmdName))
         {
-            await CreateTopic(TopicCmdName);
+            await CreateTopic(_msgBus, TopicCmdName);
         }
         if (!topics.Contains(TopicGirls))
         {
-            await CreateTopic(TopicGirls);
+            await CreateTopic(_msgBus, TopicGirls);
         }
         if (!topics.Contains(TopicBoys))
         {
-            await CreateTopic(TopicBoys);
+            await CreateTopic(_msgBus, TopicBoys);
         }
 
-        async Task CreateTopic(string topic)
+        if (!topics.Contains(TopicNumbers))
+        {
+            await CreateTopic(_msgBus, TopicNumbers);
+        }
+
+        static async Task CreateTopic<TK, TV>(MessageBus<TK, TV> mb, string topic)
         {
             Console.WriteLine($"Not found {topic}, trying to create");
             try
             {
-                await MsgBus.CreateTopic(topic);
+                await mb.CreateTopic(topic);
             }
             catch (Exception e)
             {
@@ -43,19 +50,22 @@ public class Program
         }
     }
 
-    static async Task Main(string[] args)
+    static async Task Main()
     {
         string word;
+
+        _msgBus = new MessageBus<string, string>("names");
         await Prerequisites();
-        
+
         Dictionary<string, (string description, Func<Task> command)> actions = new()
         {
             { "b", ("Get boy name", GetBoyName) },
             { "g", ("Get girl name", GetGirlName) },
-            { "q", ("Quit program", () => Task.CompletedTask) }
+            { "n", ("Get random numbers", GetNumbers) },
+            { "q", ("Quit program", Quit) }
         };
 
-        _producer = new Producer<string>();
+        _producer = _msgBus.GetProducer();
 
         CancellationTokenSource cts = new();
         Console.CancelKeyPress += (_, e) =>
@@ -64,16 +74,28 @@ public class Program
             cts.Cancel();
         };
         
-        Subscriber<string> boy = new(TopicBoys, msg =>
+        var boy = _msgBus.GetSubscriber(TopicBoys, (k, msg) =>
         {
             Console.WriteLine($"Received ♂boy♂ name: {msg}");
         }, cts.Token);
 
-        Subscriber<string> girl = new(TopicGirls, msg =>
+        var girl = _msgBus.GetSubscriber(TopicGirls, (k, msg) =>
         {
             Console.WriteLine($"Received girl name: {msg}");
         }, cts.Token);
-        
+
+        var numbers = _msgBus.GetSubscriber(TopicNumbers, (k, msg) =>
+        {
+            if (string.IsNullOrEmpty(msg))
+                return;
+            var lst = JsonConvert.DeserializeObject<List<int>>(msg);
+            Console.WriteLine($"Got {lst.Count} numbers:");
+            for (var i = 0; i < lst.Count; i++)
+            {
+                Console.WriteLine($"{i + 1}. {lst[i]}");
+            }
+        }, cts.Token);
+
         do
         {
             Console.WriteLine("# Available commands: #");
@@ -94,9 +116,7 @@ public class Program
 
 
         } while (word != "q");
-
-        await Quit();
-
+        
         cts.Cancel();
         Console.WriteLine("Press any key to quit..");
         Console.ReadKey();
@@ -106,19 +126,32 @@ public class Program
     {
         Console.WriteLine("# Requesting ♂college boy♂.. #");
         const string message = "get_boy_name";
-        await _producer.SendMessageAsync(TopicCmdName, message);
+        await _producer.SendMessageAsync(TopicCmdName, message, string.Empty);
+    }
+    static async Task GetNumbers()
+    {
+        Console.WriteLine("# Requesting random numbers.. #");
+        const string message = "get_numbers";
+        int number;
+        do
+        {
+            Console.WriteLine("Type number of numbers (more than 0).");
+        } while (!int.TryParse(Console.ReadLine(), out number) && number < 1);
+        
+        await _producer.SendMessageAsync(TopicCmdName, message, number.ToString());
     }
 
     static async Task GetGirlName()
     {
         Console.WriteLine("# Requesting random girl name.. #");
         const string message = "get_girl_name";
-        await _producer.SendMessageAsync(TopicCmdName, message);
+        await _producer.SendMessageAsync(TopicCmdName, message, string.Empty);
     }
+
     static async Task Quit()
     {
         Console.WriteLine("# Sending quit message.. #");
         const string message = "quit";
-        await _producer.SendMessageAsync(TopicCmdName, message);
+        await _producer.SendMessageAsync(TopicCmdName, message, string.Empty);
     }
 }

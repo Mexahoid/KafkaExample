@@ -1,27 +1,29 @@
 ﻿namespace MessageBroker;
 
-public class Subscriber<TV>
+public class Subscriber<TK, TV>
 {
-    private event Action<TV> MessageReceived;
+    private event Action<TK, TV> MessageReceived;
 
     private readonly string _topic;
 
     private readonly CancellationToken _token;
 
-    public Subscriber(string topic, Action<TV> action, CancellationToken ct)
+    private readonly MessageBus<TK, TV> _host;
+
+    public Subscriber(string topic, Action<TK, TV> action, CancellationToken ct, MessageBus<TK, TV> mb)
     {
         _topic = topic;
         MessageReceived += action;
         _token = ct;
-
+        _host = mb;
         StartReceiving();
     }
 
     private void StartReceiving()
     {
-        Task.Run(async () =>
+        Task.Run(() =>
         {
-            await MessageBus<TV>.Instance.ConsumeContinuously(_topic, MessageReceived, _token);
+            _host.ConsumeContinuously(_topic, MessageReceived, _token);
         }, _token);
     }
 

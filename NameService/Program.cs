@@ -1,7 +1,4 @@
-﻿
-using System;
-using Confluent.Kafka;
-using MessageBroker;
+﻿using MessageBroker;
 
 namespace NameService;
 
@@ -29,15 +26,15 @@ class Program
     private const string TopicGirls = "girls";
     private const string TopicBoys = "gachi";
 
-    private static readonly Producer<string> Prod = new();
 
     private static readonly CancellationTokenSource Cts = new();
-    private static readonly MessageBus<string> MsgBus = MessageBus<string>.Instance;
+    private static MessageBus<string, string> _msgBusNames = null!;
+    private static Producer<string, string> _prod = null!;
 
 
     private static async Task Prerequisites()
     {
-        var topics = MsgBus.GetTopics();
+        var topics = _msgBusNames.GetTopics();
 
         if (!topics.Contains(TopicCmdName))
         {
@@ -52,12 +49,12 @@ class Program
             await CreateTopic(TopicBoys);
         }
 
-        async Task CreateTopic(string topic)
+        static async Task CreateTopic(string topic)
         {
             Console.WriteLine($"Not found {topic}, trying to create");
             try
             {
-                await MsgBus.CreateTopic(topic);
+                await _msgBusNames.CreateTopic(topic);
             }
             catch (Exception e)
             {
@@ -67,19 +64,20 @@ class Program
     }
 
 
-    static async Task Main(string[] args)
+    static async Task Main()
     {
         Console.WriteLine("Initializing..");
+
+        _msgBusNames = new MessageBus<string, string>("main");
+        _prod = _msgBusNames.GetProducer();
         await Prerequisites();
-
-
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true; // prevent the process from terminating.
             Cts.Cancel();
         };
 
-        Subscriber<string> sub = new(TopicCmdName, ParseAction, Cts.Token);
+        var sub = _msgBusNames.GetSubscriber(TopicCmdName, ParseAction, Cts.Token);
         Console.WriteLine("Awaiting");
         try
         {
@@ -91,22 +89,22 @@ class Program
         }
     }
 
-    private static async void ParseAction(string value)
+    private static async void ParseAction(string key, string value)
     {
-        switch (value)
+        switch (key)
         {
             case "get_boy_name":
             {
                 string name = GetRandomCollegeBoy();
                 Console.WriteLine($"Received boy command, sending name '{name}'");
-                await Prod.SendMessageAsync(TopicBoys, name);
+                await _prod.SendMessageAsync(TopicBoys, key, name);
                 break;
             }
             case "get_girl_name":
             {
                 string name = GetRandomGirl();
                 Console.WriteLine($"Received girl command, sending name '{name}'");
-                await Prod.SendMessageAsync(TopicGirls, name);
+                await _prod.SendMessageAsync(TopicGirls, key, name);
                 break;
             }
             case "quit":

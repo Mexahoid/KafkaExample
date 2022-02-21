@@ -3,11 +3,13 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.0.32112.339
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MainApp", "MainApp\MainApp.csproj", "{56740405-3D39-496E-8A12-A389D5377942}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MainApp", "MainApp\MainApp.csproj", "{56740405-3D39-496E-8A12-A389D5377942}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MessageBroker", "MessageBroker\MessageBroker.csproj", "{D9B84DA6-CFAA-4DCB-9498-F65C180C908C}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MessageBroker", "MessageBroker\MessageBroker.csproj", "{D9B84DA6-CFAA-4DCB-9498-F65C180C908C}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NameService", "NameService\NameService.csproj", "{31C975F5-5543-4B42-899B-C15087680FDD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NameService", "NameService\NameService.csproj", "{31C975F5-5543-4B42-899B-C15087680FDD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NumberService", "NumberService\NumberService.csproj", "{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -27,6 +29,10 @@ Global
 		{31C975F5-5543-4B42-899B-C15087680FDD}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{31C975F5-5543-4B42-899B-C15087680FDD}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{31C975F5-5543-4B42-899B-C15087680FDD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
