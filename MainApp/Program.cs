@@ -5,19 +5,56 @@ namespace MainApp;
 
 public class Program
 {
-    private static MessageBus2<string, string> _msgBus = MessageBus2<string, string>.Instance;
+    private static readonly MessageBus2<string> MsgBus = MessageBus2<string>.Instance;
+
+    private const string TopicCmdName = "requests";
+    private const string TopicGirls = "girls";
+    private const string TopicBoys = "gachi";
+
+    private static Queue<(string topic, string message)> _messages = null!;
+
+    static async Task CreateTopic(string topic)
+    {
+        Console.WriteLine($"Not found {topic}, trying to create");
+        try
+        {
+            await MsgBus.CreateTopic(topic);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+    }
+
     static async Task Main(string[] args)
     {
         string word;
+        var topics = MsgBus.GetTopics();
+
+        if (!topics.Contains(TopicCmdName))
+        {
+            await CreateTopic(TopicCmdName);
+        }
+        if (!topics.Contains(TopicGirls))
+        {
+            await CreateTopic(TopicGirls);
+        }
+        if (!topics.Contains(TopicBoys))
+        {
+            await CreateTopic(TopicBoys);
+        }
+
+        _messages = new Queue<(string, string)>();
+        Task.Run(Consume).GetAwaiter().GetResult();
+        Task.Run(ProcessMessage).GetAwaiter().GetResult();
 
         Dictionary<string, (string description, Func<Task> command)> actions = new()
         {
-            {"l", ("List all available topics", ListTopic)},
-            {"c", ("Create topic", CreateTopics)},
-            {"d", ("Delete topic", DeleteTopic)},
-            {"s", ("Send message to topic", SendMessageToTopic)},
-            {"r", ("Receive message from topic", ReceiveMessageFromTopic)},
-            {"q", ("Quit program", () => Task.CompletedTask)}
+            { "l", ("List all available topics", ListTopic) },
+            { "s", ("Send message to topic", SendMessageToTopic) },
+            { "b", ("Get boy name", GetBoyName) },
+            { "g", ("Get girl name", GetGirlName) },
+            { "q", ("Quit program", () => Task.CompletedTask) }
         };
 
         do
@@ -29,110 +66,32 @@ public class Program
                 Console.WriteLine($"'{key}' - {actions[key].description}");
             }
 
-
             Console.Write(">> ");
             word = Console.ReadLine()!;
-
+            if (string.IsNullOrEmpty(word))
+                continue;
             if (!actions.ContainsKey(word))
                 Console.WriteLine("! Unknown command, try again. !");
             else
                 await actions[word].command();
 
+
         } while (word != "q");
 
-        
-        //msgBus.SendMessage("sasiska", "sas", "sos");
-
-        
     }
 
-    static List<string> GetPrintTopics()
+    static Task ListTopic()
     {
-        var topics = _msgBus.GetTopics();
+        var topics = MsgBus.GetTopics();
 
         Console.WriteLine("# Available topics: #");
         for (var i = 0; i < topics.Count; i++)
         {
             Console.WriteLine($"{i + 1}. {topics[i]}");
         }
-
-        return topics;
-    }
-
-    static Task ListTopic()
-    {
-        _ = GetPrintTopics();
-
         return Task.CompletedTask;
     }
 
-    static async Task CreateTopics()
-    {
-        await CreateDelete(true);
-    }
-
-
-    private static async Task CreateDelete(bool isCreating)
-    {
-        var topics = new List<string>();
-        Func<string, Task> action = isCreating ? _msgBus.CreateTopic : _msgBus.DeleteTopic;
-        var word = isCreating ? "Creat" : "Delet";
-
-        Console.WriteLine($"# {word}ing topic");
-        string topic;
-        do
-        {
-            if (!isCreating)
-                topics = GetPrintTopics();
-
-
-            Console.WriteLine(isCreating ? "Type topic name to create." : "Type topic number to delete.");
-            Console.WriteLine($"Or type 'q' to quit without {word.ToLower()}ing.");
-
-            Console.Write(">> ");
-
-            if (isCreating)
-            {
-                topic = Console.ReadLine()!;
-            }
-            else
-            {
-                int number;
-                while (!int.TryParse(Console.ReadLine(), out number) || number < 1 || number > topics.Count)
-                {
-                    Console.WriteLine("Try again, bad number.");
-                    Console.Write(">> ");
-                }
-
-                topic = topics[number - 1];
-            }
-            
-
-            try
-            {
-                await action(topic);
-                Console.WriteLine($"Successfully {word.ToLower()}ed topic '{topic}'.");
-                return;
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine($"Error: {e.Message}");
-            }
-        } while (topic != "q");
-        Console.WriteLine($"Quitting without {word.ToLower()}ing.");
-    }
-
-
-
-    static Task DeleteTopic()
-    {
-        Console.WriteLine("Here used to be delete topic function but due to Kafka problems on Windows it's turned off :(");
-        return Task.CompletedTask;
-
-        /*
-        await CreateDelete(false);
-*/
-    }
 
     static Task SendMessageToTopic()
     {
@@ -154,25 +113,74 @@ public class Program
             message = Console.ReadLine();
         }
 
-        _msgBus.SendMessage(topic, message!.GetHashCode().ToString(), message);
+        MsgBus.SendMessage(topic, message);
         return Task.CompletedTask;
     }
 
-
-    static Task ReceiveMessageFromTopic()
+    static async Task GetBoyName()
     {
-        Console.WriteLine("# Receive message #");
+        Console.WriteLine("# Get random ♂boy♂ name #");
 
-        var topic = string.Empty;
+        const string message = "get_boy_name";
 
-        while (string.IsNullOrEmpty(topic))
+        await MsgBus.SendMessageAsync(TopicCmdName, message);
+    }
+
+    static async Task GetGirlName()
+    {
+        Console.WriteLine("# Get random girl name #");
+
+        const string message = "get_girl_name";
+
+        await MsgBus.SendMessageAsync(TopicCmdName, message);
+    }
+
+
+    private static void Consume()
+    {
+        Task.Run(async () => await MsgBus.ConsumeContinuously(TopicGirls, msg =>
         {
-            Console.Write("Type in topic name >> ");
-            topic = Console.ReadLine();
-        }
-        
+            _messages.Enqueue((TopicGirls, msg));
+        }));
+        Task.Run(async () => await MsgBus.ConsumeContinuously(TopicBoys, msg =>
+        {
+            _messages.Enqueue((TopicBoys, msg));
+        }));
+    }
 
-        _msgBus.Consume(topic);
-        return Task.CompletedTask;
+
+    private static void ProcessMessage()
+    {
+        CancellationTokenSource cts = new();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true; // prevent the process from terminating.
+            cts.Cancel();
+        };
+
+        Task.Run(() =>
+        {
+            while (!cts.Token.IsCancellationRequested)
+            {
+                if (!_messages.Any())
+                    continue;
+
+                var value = _messages.Dequeue();
+
+                switch (value.topic)
+                {
+                    case TopicBoys:
+                    {
+                        Console.WriteLine($"Received ♂boy♂ name: {value.message}");
+                        break;
+                    }
+                    case TopicGirls:
+                    {
+                        Console.WriteLine($"Received girl name: {value.message}");
+                        break;
+                    }
+                }
+            }
+        }, cts.Token);
     }
 }

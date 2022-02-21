@@ -1,4 +1,5 @@
 ﻿
+using System;
 using Confluent.Kafka;
 using MessageBroker;
 
@@ -6,15 +7,6 @@ namespace NameService;
 
 class Program
 {
-   /* private static readonly string userHelpMsg = "NameService.\nEnter 'b' or 'g' to process boy or girl names respectively";
-    private static readonly string bTopicNameCmd = "b_name_command";
-    private static readonly string gTopicNameCmd = "g_name_command";
-
-    private static readonly string bTopicNameResp = "b_name_response";
-    private static readonly string gTopicNameResp = "g_name_response";
-    private static readonly string topicCmdName = "get_name_request";
-    private static readonly string topicRespName = "resp_name_request";
-    private static MessageBus msgBus;*/
     private static readonly string[] _boyNames =
     {
         "Arsenii",
@@ -30,113 +22,108 @@ class Program
         "Ksusha",
         "Katya",
         "Olga"
-    };/*
-    private static readonly string topicGirls = "girls";
-    private static readonly string topicBoys = "gachi";
-    */
-    static void Main(string[] args)
+    };
+
+
+    private const string TopicCmdName = "requests";
+    private const string TopicGirls = "girls";
+    private const string TopicBoys = "gachi";
+
+    private static readonly MessageBus2<string> MsgBus = MessageBus2<string>.Instance;
+
+    private static Queue<string> _messages = null!;
+
+    static async Task CreateTopic(string topic)
     {
-        Console.WriteLine("Awaiting");
+        Console.WriteLine($"Not found {topic}, trying to create");
+        try
+        {
+            await MessageBus2<string>.Instance.CreateTopic(topic);
+        }
+        catch (Exception e)
+        {
+            Console.WriteLine(e.Message);
+        }
+    }
 
-        MessageBus2<string, string>.Instance.Consume("sas");
+    static async Task Main(string[] args)
+    {
+        Console.WriteLine("Initializing..");
+        var topics = MsgBus.GetTopics();
 
+        if (!topics.Contains(TopicCmdName))
+        {
+            await CreateTopic(TopicCmdName);
+        }
+        if (!topics.Contains(TopicGirls))
+        {
+            await CreateTopic(TopicGirls);
+        }
+        if (!topics.Contains(TopicBoys))
+        {
+            await CreateTopic(TopicBoys);
+        }
 
-        /*bool canceled = false;
+        _messages = new Queue<string>();
 
+        CancellationTokenSource cts = new();
         Console.CancelKeyPress += (_, e) =>
         {
-            e.Cancel = true;
-            canceled = true;
+            e.Cancel = true; // prevent the process from terminating.
+            cts.Cancel();
         };
 
-        using (msgBus = new MessageBus())
+
+        Task.Run(() => ProcessMessage(cts.Token), cts.Token).GetAwaiter().GetResult();
+
+
+        Console.WriteLine("Awaiting");
+
+
+        await MsgBus.ConsumeContinuously(TopicCmdName, value =>
         {
-            Console.WriteLine(userHelpMsg);
-
-            HandleUserInput();
-            
-        }*/
-
-        
-        
-        /*CancellationTokenSource cts = new();
-        var guid = MessageBus2<Null, string>.Instance.Subscribe(topicCmdName, Parse, cts);
+            Console.WriteLine($"Got message from '{TopicCmdName}': {value}");
+            _messages.Enqueue(value);
+        });
 
 
-
-        void Parse(string cmd)
-        {
-            switch (cmd)
-            {
-                case "get_boy_name":
-                    MessageBus2.Instance.SendMessage(topicBoys, GetRandomCollegeBoy());
-                    break;
-                case "get_girl_name":
-                    MessageBus2.Instance.SendMessage(topicGirls, GetRandomGirl());
-                    break;
-                case "quit":
-                    Console.WriteLine("Quitting");
-                    cts.Cancel();
-                    //MessageBus2.Instance.Unsubscribe(guid, cts);
-                    break;
-            }
-        }
-
-        while (!cts.IsCancellationRequested)
-        {
-
-        }
-        MessageBus2.Instance.Unsubscribe(guid, cts);*/
     }
 
-
-    /*private static void HandleUserInput()
+    private static void ProcessMessage(CancellationToken ct)
     {
-        string? userInput;
-        do
+        Task.Run(async () =>
         {
-            userInput = Console.ReadLine();
-            switch (userInput)
+            while (!ct.IsCancellationRequested)
             {
-                case "b":
-                    Task.Run(() =>
-                        msgBus!.SubscribeOnTopic<string>(bTopicNameCmd, BoyNameCommandListener, CancellationToken.None));
-                    Console.WriteLine("Processing boy names");
-                    break;
-                case "g":
-                    Task.Run(() =>
-                        msgBus!.SubscribeOnTopic<string>(gTopicNameCmd, GirlNameCommandListener,
-                            CancellationToken.None));
-                    Console.WriteLine("Processing girl names");
-                    break;
-                case "q":
-                    Console.WriteLine("Exiting.");
-                    break;
-                default:
-                    Console.WriteLine($"Unknown command. {userHelpMsg}");
+                if (!_messages.Any())
                     continue;
+
+
+                var value = _messages.Dequeue();
+
+                switch (value)
+                {
+                    case "get_boy_name":
+                    {
+                        string name = GetRandomCollegeBoy();
+                        Console.WriteLine($"Received boy command, sending name '{name}'");
+                        await MsgBus.SendMessageAsync(TopicBoys, name, ct);
+                        break;
+                    }
+                    case "get_girl_name":
+                    {
+                        string name = GetRandomGirl();
+                        Console.WriteLine($"Received girl command, sending name '{name}'");
+                        await MsgBus.SendMessageAsync(TopicGirls, name, ct);
+                        //msgBus.SendMessage(TopicGirls, name);
+                        break;
+                    }
+                }
             }
-
-        } while (userInput != "q");
+        }, ct);
     }
 
-    private static void BoyNameCommandListener(string msg)
-    {
-        var r = new Random().Next(0, 5);
-        var randName = _boyNames[r];
 
-        msgBus.SendMessage(bTopicNameResp, randName);
-        Console.WriteLine($"Sending {randName}");
-    }
-
-    private static void GirlNameCommandListener(string msg)
-    {
-        var r = new Random().Next(0, 5);
-        var randName = _girlNames[r];
-
-        msgBus.SendMessage(gTopicNameResp, randName);
-        Console.WriteLine($"Sending {randName}");
-    }*/
     private static string GetRandomCollegeBoy()
     {
         var r = new Random().Next(0, 5);

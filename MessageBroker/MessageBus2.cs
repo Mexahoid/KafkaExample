@@ -3,17 +3,17 @@ using Confluent.Kafka.Admin;
 
 namespace MessageBroker;
 
-public class MessageBus2<TK, TV>
+public class MessageBus2<TV>
 {
-    private static MessageBus2<TK, TV>? _instance;
-    public static MessageBus2<TK, TV> Instance => _instance ??= new MessageBus2<TK, TV>();
+    private static MessageBus2<TV>? _instance;
+    public static MessageBus2<TV> Instance => _instance ??= new MessageBus2<TV>();
 
 
-    private readonly ProducerBuilder<TK, TV> _producerBuilder;
+    private readonly ProducerBuilder<Null, TV> _producerBuilder;
     private readonly AdminClientBuilder _adminBuilder;
-    private readonly ConsumerBuilder<TK, TV> _consBuilder;
+    private readonly ConsumerBuilder<Null, TV> _consBuilder;
 
-    private readonly List<(Guid, IConsumer<TK, TV>, Task)> _consumers;
+    private readonly List<(Guid, IConsumer<Null, TV>, Task)> _consumers;
 
 
     private MessageBus2()
@@ -24,7 +24,7 @@ public class MessageBus2<TK, TV>
         {
             {"bootstrap.servers", host}
         };
-        _producerBuilder = new ProducerBuilder<TK, TV>(producerConfig);
+        _producerBuilder = new ProducerBuilder<Null, TV>(producerConfig);
         _adminBuilder = new AdminClientBuilder(producerConfig);
 
 
@@ -33,14 +33,14 @@ public class MessageBus2<TK, TV>
             {"group.id", "custom-group"},
             {"bootstrap.servers", host}
         };
-        _consBuilder = new ConsumerBuilder<TK, TV>(consumerConfig);
-        _consumers = new List<(Guid, IConsumer<TK, TV>, Task)>();
+        _consBuilder = new ConsumerBuilder<Null, TV>(consumerConfig);
+        _consumers = new List<(Guid, IConsumer<Null, TV>, Task)>();
     }
-    
-    public void SendMessage(string topic, TK key, TV message)
+
+    public void SendMessage(string topic, TV message)
     {
         using var producer = _producerBuilder.Build();
-        producer.Produce(topic, new Message<TK, TV> { Key = key, Value = message },
+        producer.Produce(topic, new Message<Null, TV> { Value = message },
             (deliveryReport) =>
             {
                 Console.WriteLine(deliveryReport.Error.Code != ErrorCode.NoError
@@ -49,8 +49,15 @@ public class MessageBus2<TK, TV>
             });
 
         producer.Flush(TimeSpan.FromSeconds(10));
+    }
+    public async Task SendMessageAsync(string topic, TV message, CancellationToken ct = default)
+    {
+        using var producer = _producerBuilder.Build();
+        var dr = await producer.ProduceAsync(topic, new Message<Null, TV> { Value = message }, ct);
 
-        Console.WriteLine($"Message '{message}' was sent to topic '{topic}'");
+        Console.WriteLine($"Produced message to: {dr.TopicPartitionOffset}");
+
+        producer.Flush(TimeSpan.FromSeconds(10));
     }
 
     public List<string> GetTopics()
@@ -59,22 +66,6 @@ public class MessageBus2<TK, TV>
         var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
         var topicNames = metadata.Topics.Select(a => a.Topic).ToList();
         return topicNames;
-    }
-
-    public async Task DeleteTopic(string topic)
-    {
-        using var adminClient = _adminBuilder.Build();
-        try
-        {
-            await adminClient.DeleteTopicsAsync(new []
-            {
-                topic
-            });
-        }
-        catch (DeleteTopicsException e)
-        {
-            throw new Exception($"An error occured when deleting topic {e.Results[0].Topic}: {e.Results[0].Error.Reason}", e);
-        }
     }
 
     public async Task CreateTopic(string topic)
@@ -91,134 +82,74 @@ public class MessageBus2<TK, TV>
         }
     }
 
+    public bool CheckTopic(string topic)
+    {
+        var topics = GetTopics();
+        return topics.Contains(topic);
+    }
 
-
-    public void Consume(string topic)
+    public async Task ConsumeContinuously(string topic, Action<TV> action)
     {
         CancellationTokenSource cts = new();
-        Console.CancelKeyPress += (_, e) => {
+        Console.CancelKeyPress += (_, e) =>
+        {
             e.Cancel = true; // prevent the process from terminating.
             cts.Cancel();
         };
 
-        using var consumer = _consBuilder.Build();
-        consumer.Subscribe(topic);
-        try
-        {
-            while (true)
-            {
-                var cr = consumer.Consume(cts.Token);
-                var key = cr.Message.Key == null ? default : cr.Message.Key;
-                Console.WriteLine($"Consumed record with key '{key}' and value '{cr.Message.Value}'");
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            //exception might have occurred since Ctrl-C was pressed.
-        }
-        finally
-        {
-            // Ensure the consumer leaves the group cleanly and final offsets are committed.
-            consumer.Close();
-        }
-    }
-    
-    /*
-    public Guid Subscribe(string topic, Action<string> action, CancellationTokenSource cts)
-    {
-        var consumer = _consBuilder.Build();
-        try
-        {
-            consumer.Subscribe(topic);
-            Console.WriteLine($"Subscribed on topic '{topic}'");
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
 
-        var task = new Task(() =>
+        await Task.Run(() =>
         {
-            while (!cts.Token.IsCancellationRequested)
+            using var consumer = _consBuilder.Build();
+            consumer.Subscribe(topic);
+            try
             {
-                var answer = consumer.Consume(TimeSpan.FromMilliseconds(10));
-                if (answer != null)
+                while (!cts.IsCancellationRequested)
                 {
-                    action(answer.Message.Value);
+                    var cr = consumer.Consume(cts.Token);
+                    action(cr.Message.Value);
                 }
             }
-        });
-
-        Guid res = Guid.NewGuid();
-        _consumers.Add((res, consumer, task));
-        task.Start();
-
-        return res;
+            catch (OperationCanceledException)
+            {
+                //exception might have occurred since Ctrl-C was pressed.
+            }
+            finally
+            {
+                // Ensure the consumer leaves the group cleanly and final offsets are committed.
+                consumer.Close();
+            }
+        }, cts.Token);
     }
 
-    public void Unsubscribe(Guid guid, CancellationTokenSource cts)
+    public async Task ConsumeOnce(string topic, Action<TV> action)
     {
-        cts.Cancel();
-        _consumers.RemoveAll(x => x.Item1 == guid);
+        CancellationTokenSource cts = new();
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true; // prevent the process from terminating.
+            cts.Cancel();
+        };
+
+
+        await Task.Run(() =>
+        {
+            using var consumer = _consBuilder.Build();
+            consumer.Subscribe(topic);
+            try
+            {
+                var cr = consumer.Consume(cts.Token);
+                action(cr.Message.Value);
+            }
+            catch (OperationCanceledException)
+            {
+                //exception might have occurred since Ctrl-C was pressed.
+            }
+            finally
+            {
+                // Ensure the consumer leaves the group cleanly and final offsets are committed.
+                consumer.Close();
+            }
+        }, cts.Token);
     }
-
-
-    public string AwaitMessageAsync(string topic, CancellationToken ct)
-    {
-
-        var consumer = _consBuilder.Build();
-
-        try
-        {
-            consumer.Subscribe(topic);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
-
-        consumer.Assign(new List<TopicPartitionOffset>
-        {
-            new(topic, 0, -1)
-        });
-
-        while (!ct.IsCancellationRequested)
-        {
-            var answer = consumer.Consume(TimeSpan.FromMilliseconds(10));
-            if (answer != null)
-            {
-                //consumer.Dispose();
-                return answer.Message.Value;
-            }
-        }
-
-        return string.Empty;
-    }*/
-    /*public async Task<string> SubscribeOnTopic(string topic, Action<string> action, CancellationToken ct)
-    {
-        var _consBuilder = new ConsumerBuilder<Null, string>(consumerConfig);
-        using var consumer = _consBuilder.Build();
-
-        try
-        {
-            consumer.Subscribe(topic);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
-        
-
-        while (!ct.IsCancellationRequested)
-        {
-            var answer = consumer.Consume(TimeSpan.FromMilliseconds(10));
-            if (answer != null)
-            {
-                action(answer.Message.Value);
-            }
-            await Task.Delay(1, ct);
-        }
-
-        return string.Empty;
-    }*/
 }
