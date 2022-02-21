@@ -7,7 +7,7 @@ namespace NameService;
 
 class Program
 {
-    private static readonly string[] _boyNames =
+    private static readonly string[] BoyNames =
     {
         "Arsenii",
         "Igor",
@@ -15,7 +15,7 @@ class Program
         "Ivan",
         "Dmitrii",
     };
-    private static readonly string[] _girlNames =
+    private static readonly string[] GirlNames =
     {
         "Nastya",
         "Lena",
@@ -29,26 +29,14 @@ class Program
     private const string TopicGirls = "girls";
     private const string TopicBoys = "gachi";
 
-    private static readonly MessageBus2<string> MsgBus = MessageBus2<string>.Instance;
+    private static readonly Producer<string> Prod = new();
 
-    private static Queue<string> _messages = null!;
+    private static readonly CancellationTokenSource Cts = new();
+    private static readonly MessageBus<string> MsgBus = MessageBus<string>.Instance;
 
-    static async Task CreateTopic(string topic)
+
+    private static async Task Prerequisites()
     {
-        Console.WriteLine($"Not found {topic}, trying to create");
-        try
-        {
-            await MessageBus2<string>.Instance.CreateTopic(topic);
-        }
-        catch (Exception e)
-        {
-            Console.WriteLine(e.Message);
-        }
-    }
-
-    static async Task Main(string[] args)
-    {
-        Console.WriteLine("Initializing..");
         var topics = MsgBus.GetTopics();
 
         if (!topics.Contains(TopicCmdName))
@@ -64,80 +52,82 @@ class Program
             await CreateTopic(TopicBoys);
         }
 
-        _messages = new Queue<string>();
+        async Task CreateTopic(string topic)
+        {
+            Console.WriteLine($"Not found {topic}, trying to create");
+            try
+            {
+                await MsgBus.CreateTopic(topic);
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+            }
+        }
+    }
 
-        CancellationTokenSource cts = new();
+
+    static async Task Main(string[] args)
+    {
+        Console.WriteLine("Initializing..");
+        await Prerequisites();
+
+
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true; // prevent the process from terminating.
-            cts.Cancel();
+            Cts.Cancel();
         };
 
-
-        Task.Run(() => ProcessMessage(cts.Token), cts.Token).GetAwaiter().GetResult();
-
-
+        Subscriber<string> sub = new(TopicCmdName, ParseAction, Cts.Token);
         Console.WriteLine("Awaiting");
-
-
-        await MsgBus.ConsumeContinuously(TopicCmdName, value =>
+        try
         {
-            Console.WriteLine($"Got message from '{TopicCmdName}': {value}");
-            _messages.Enqueue(value);
-        });
-
-
+            await Task.Delay(-1, Cts.Token);
+        }
+        catch (TaskCanceledException)
+        {
+            Console.WriteLine("Quitting");
+        }
     }
 
-    private static void ProcessMessage(CancellationToken ct)
+    private static async void ParseAction(string value)
     {
-        Task.Run(async () =>
+        switch (value)
         {
-            while (!ct.IsCancellationRequested)
+            case "get_boy_name":
             {
-                if (!_messages.Any())
-                    continue;
-
-
-                var value = _messages.Dequeue();
-
-                switch (value)
-                {
-                    case "get_boy_name":
-                    {
-                        string name = GetRandomCollegeBoy();
-                        Console.WriteLine($"Received boy command, sending name '{name}'");
-                        await MsgBus.SendMessageAsync(TopicBoys, name, ct);
-                        break;
-                    }
-                    case "get_girl_name":
-                    {
-                        string name = GetRandomGirl();
-                        Console.WriteLine($"Received girl command, sending name '{name}'");
-                        await MsgBus.SendMessageAsync(TopicGirls, name, ct);
-                        //msgBus.SendMessage(TopicGirls, name);
-                        break;
-                    }
-                }
+                string name = GetRandomCollegeBoy();
+                Console.WriteLine($"Received boy command, sending name '{name}'");
+                await Prod.SendMessageAsync(TopicBoys, name);
+                break;
             }
-        }, ct);
+            case "get_girl_name":
+            {
+                string name = GetRandomGirl();
+                Console.WriteLine($"Received girl command, sending name '{name}'");
+                await Prod.SendMessageAsync(TopicGirls, name);
+                break;
+            }
+            case "quit":
+            {
+                Cts.Cancel();
+                break;
+            }
+        }
     }
-
 
     private static string GetRandomCollegeBoy()
     {
         var r = new Random().Next(0, 5);
-        var randName = _boyNames[r];
-        Console.WriteLine($"Sending college boy: {randName}");
+        var randName = BoyNames[r];
         return randName;
     }
 
     private static string GetRandomGirl()
     {
         var r = new Random().Next(0, 5);
-        var randName = _girlNames[r];
-
-        Console.WriteLine($"Sending girl name: {randName}");
+        var randName = GirlNames[r];
         return randName;
     }
 }

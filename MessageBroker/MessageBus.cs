@@ -3,20 +3,17 @@ using Confluent.Kafka.Admin;
 
 namespace MessageBroker;
 
-public class MessageBus2<TV>
+public class MessageBus<TV>
 {
-    private static MessageBus2<TV>? _instance;
-    public static MessageBus2<TV> Instance => _instance ??= new MessageBus2<TV>();
+    private static MessageBus<TV>? _instance;
+    public static MessageBus<TV> Instance => _instance ??= new MessageBus<TV>();
 
 
     private readonly ProducerBuilder<Null, TV> _producerBuilder;
     private readonly AdminClientBuilder _adminBuilder;
     private readonly ConsumerBuilder<Null, TV> _consBuilder;
 
-    private readonly List<(Guid, IConsumer<Null, TV>, Task)> _consumers;
-
-
-    private MessageBus2()
+    private MessageBus()
     {
         const string host = "localhost";
 
@@ -34,14 +31,13 @@ public class MessageBus2<TV>
             {"bootstrap.servers", host}
         };
         _consBuilder = new ConsumerBuilder<Null, TV>(consumerConfig);
-        _consumers = new List<(Guid, IConsumer<Null, TV>, Task)>();
     }
 
     public void SendMessage(string topic, TV message)
     {
         using var producer = _producerBuilder.Build();
         producer.Produce(topic, new Message<Null, TV> { Value = message },
-            (deliveryReport) =>
+            deliveryReport =>
             {
                 Console.WriteLine(deliveryReport.Error.Code != ErrorCode.NoError
                     ? $"Failed to deliver message: {deliveryReport.Error.Reason}"
@@ -50,11 +46,12 @@ public class MessageBus2<TV>
 
         producer.Flush(TimeSpan.FromSeconds(10));
     }
+
     public async Task SendMessageAsync(string topic, TV message, CancellationToken ct = default)
     {
         using var producer = _producerBuilder.Build();
         var dr = await producer.ProduceAsync(topic, new Message<Null, TV> { Value = message }, ct);
-
+        
         Console.WriteLine($"Produced message to: {dr.TopicPartitionOffset}");
 
         producer.Flush(TimeSpan.FromSeconds(10));
@@ -78,35 +75,21 @@ public class MessageBus2<TV>
         }
         catch (CreateTopicsException e)
         {
-            throw new Exception($"An error occured when creating topic {e.Results[0].Topic}: {e.Results[0].Error.Reason}", e);
+            throw new Exception("Whoops, it seems that another process just created this topic.", e);
         }
     }
-
-    public bool CheckTopic(string topic)
+    
+    public async Task ConsumeContinuously(string topic, Action<TV> action, CancellationToken ct)
     {
-        var topics = GetTopics();
-        return topics.Contains(topic);
-    }
-
-    public async Task ConsumeContinuously(string topic, Action<TV> action)
-    {
-        CancellationTokenSource cts = new();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true; // prevent the process from terminating.
-            cts.Cancel();
-        };
-
-
         await Task.Run(() =>
         {
             using var consumer = _consBuilder.Build();
             consumer.Subscribe(topic);
             try
             {
-                while (!cts.IsCancellationRequested)
+                while (!ct.IsCancellationRequested)
                 {
-                    var cr = consumer.Consume(cts.Token);
+                    var cr = consumer.Consume(ct);
                     action(cr.Message.Value);
                 }
             }
@@ -119,37 +102,6 @@ public class MessageBus2<TV>
                 // Ensure the consumer leaves the group cleanly and final offsets are committed.
                 consumer.Close();
             }
-        }, cts.Token);
-    }
-
-    public async Task ConsumeOnce(string topic, Action<TV> action)
-    {
-        CancellationTokenSource cts = new();
-        Console.CancelKeyPress += (_, e) =>
-        {
-            e.Cancel = true; // prevent the process from terminating.
-            cts.Cancel();
-        };
-
-
-        await Task.Run(() =>
-        {
-            using var consumer = _consBuilder.Build();
-            consumer.Subscribe(topic);
-            try
-            {
-                var cr = consumer.Consume(cts.Token);
-                action(cr.Message.Value);
-            }
-            catch (OperationCanceledException)
-            {
-                //exception might have occurred since Ctrl-C was pressed.
-            }
-            finally
-            {
-                // Ensure the consumer leaves the group cleanly and final offsets are committed.
-                consumer.Close();
-            }
-        }, cts.Token);
+        }, ct);
     }
 }
