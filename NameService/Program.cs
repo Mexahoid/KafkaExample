@@ -68,7 +68,7 @@ class Program
     {
         Console.WriteLine("Initializing..");
 
-        _msgBusNames = new MessageBus<string, string>("main");
+        _msgBusNames = new MessageBus<string, string>(Console.WriteLine);
         _prod = _msgBusNames.GetProducer();
         await Prerequisites();
         Console.CancelKeyPress += (_, e) =>
@@ -77,7 +77,7 @@ class Program
             Cts.Cancel();
         };
 
-        var sub = _msgBusNames.GetSubscriber(TopicCmdName, ParseAction, Cts.Token);
+        var sub = _msgBusNames.GetSubscriber(TopicCmdName, "main", ParseAction, Cts.Token);
         Console.WriteLine("Awaiting");
         try
         {

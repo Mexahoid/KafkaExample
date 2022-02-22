@@ -1,30 +1,49 @@
-﻿namespace MessageBroker;
+﻿using Confluent.Kafka;
+
+namespace MessageBroker;
 
 public class Subscriber<TK, TV>
 {
-    private event Action<TK, TV> MessageReceived;
-
-    private readonly string _topic;
-
-    private readonly CancellationToken _token;
-
-    private readonly MessageBus<TK, TV> _host;
-
-    public Subscriber(string topic, Action<TK, TV> action, CancellationToken ct, MessageBus<TK, TV> mb)
+    private readonly Action<TK, TV> _messageReceived;
+    
+    public Subscriber(string topic, Action<TK, TV> action, string group, string host, CancellationToken ct)
     {
-        _topic = topic;
-        MessageReceived += action;
-        _token = ct;
-        _host = mb;
-        StartReceiving();
+        _messageReceived += action;
+
+        var cc = new ConsumerConfig
+        {
+            BootstrapServers = host,
+            GroupId = group,
+            AutoOffsetReset = AutoOffsetReset.Earliest,
+            EnableAutoCommit = true
+        };
+
+        StartReceiving(cc, topic, ct);
     }
 
-    private void StartReceiving()
+    private void StartReceiving(ConsumerConfig cc, string topic, CancellationToken token)
     {
         Task.Run(() =>
         {
-            _host.ConsumeContinuously(_topic, MessageReceived, _token);
-        }, _token);
+            using var consumer = new ConsumerBuilder<TK, TV>(cc).Build();
+            consumer.Subscribe(topic);
+            try
+            {
+                while (!token.IsCancellationRequested)
+                {
+                    var cr = consumer.Consume(token);
+                    _messageReceived(cr.Message.Key, cr.Message.Value);
+                }
+            }
+            catch (OperationCanceledException)
+            {
+            }
+            finally
+            {
+                consumer.Close();
+            }
+        }, token);
     }
+    
 
 }

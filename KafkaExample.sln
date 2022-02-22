@@ -9,7 +9,9 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "MessageBroker", "MessageBro
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NameService", "NameService\NameService.csproj", "{31C975F5-5543-4B42-899B-C15087680FDD}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "NumberService", "NumberService\NumberService.csproj", "{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "NumberService", "NumberService\NumberService.csproj", "{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}"
+EndProject
+Project("{E53339B2-1760-4266-BCC7-CA923CBCF16C}") = "docker-compose", "docker-compose.dcproj", "{A5FA1DF1-FA88-46C9-BBB9-280F1D715705}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -33,6 +35,10 @@ Global
 		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{5CC78D03-B2AB-49FD-8C85-831C8BCE40B6}.Release|Any CPU.Build.0 = Release|Any CPU
+		{A5FA1DF1-FA88-46C9-BBB9-280F1D715705}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{A5FA1DF1-FA88-46C9-BBB9-280F1D715705}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{A5FA1DF1-FA88-46C9-BBB9-280F1D715705}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{A5FA1DF1-FA88-46C9-BBB9-280F1D715705}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

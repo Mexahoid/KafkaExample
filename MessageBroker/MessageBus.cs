@@ -1,73 +1,35 @@
 ﻿using Confluent.Kafka;
 using Confluent.Kafka.Admin;
 using Confluent.Kafka.SyncOverAsync;
-using Confluent.SchemaRegistry;
-
 namespace MessageBroker;
 
 public class MessageBus<TK, TV>
 {
-    private readonly ProducerBuilder<TK, TV> _producerBuilder;
     private readonly AdminClientBuilder _adminBuilder;
-    private readonly ConsumerBuilder<TK, TV> _consBuilder;
+    private readonly string _host = Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER") == "true" ?
+        "kafka:29092" :
+        "127.0.0.1:9092";
 
-    public MessageBus(string group)
+    private readonly Action<string>? _logger;
+
+    public MessageBus(Action<string>? logger = default)
     {
-        const string host = "localhost";
-
-        var producerConfig = new Dictionary<string, string>
+        _logger = logger;
+        var config = new Dictionary<string, string>
         {
-            {"bootstrap.servers", host}
+            {"bootstrap.servers", _host}
         };
-        _producerBuilder = new ProducerBuilder<TK, TV>(producerConfig);
-        _adminBuilder = new AdminClientBuilder(producerConfig);
-        
-
-        var cc = new ConsumerConfig
-        {
-            BootstrapServers = host,
-            GroupId = group,
-            AutoOffsetReset = AutoOffsetReset.Earliest,
-            EnableAutoCommit = true
-        };
-
-        _consBuilder = new ConsumerBuilder<TK, TV>(cc);
+        _adminBuilder = new AdminClientBuilder(config);
     }
-
-    public void SendMessage(string topic, TK key, TV message)
-    {
-        using var producer = _producerBuilder.Build();
-        producer.Produce(topic, new Message<TK, TV> { Key = key, Value = message },
-            deliveryReport =>
-            {
-                Console.WriteLine(deliveryReport.Error.Code != ErrorCode.NoError
-                    ? $"Failed to deliver message: {deliveryReport.Error.Reason}"
-                    : $"Produced message to: {deliveryReport.TopicPartitionOffset}");
-            });
-
-        producer.Flush(TimeSpan.FromSeconds(10));
-    }
-
+    
     public Producer<TK, TV> GetProducer()
     {
-        return new Producer<TK, TV>(this);
+        return new Producer<TK, TV>(_host, _logger);
     }
 
-    public Subscriber<TK, TV> GetSubscriber(string topic, Action<TK, TV> action, CancellationToken ct)
+    public Subscriber<TK, TV> GetSubscriber(string topic, string group, Action<TK, TV> action, CancellationToken ct)
     {
-        return new Subscriber<TK, TV>(topic, action, ct, this);
-    }
-
-
-
-    public async Task SendMessageAsync(string topic, TK key, TV message, CancellationToken ct = default)
-    {
-        using var producer = _producerBuilder.Build();
-        var dr = await producer.ProduceAsync(topic, new Message<TK, TV> { Key = key, Value = message }, ct);
-
-        Console.WriteLine($"Produced message to: {dr.TopicPartitionOffset}");
-
-        producer.Flush(TimeSpan.FromSeconds(10));
+        return new Subscriber<TK, TV>(topic, action, group, _host, ct);
     }
 
     public List<string> GetTopics()
@@ -86,32 +48,9 @@ public class MessageBus<TK, TV>
             await adminClient.CreateTopicsAsync(new[] {
                 new TopicSpecification { Name = topic, ReplicationFactor = 1, NumPartitions = 1 } });
         }
-        catch (CreateTopicsException e)
+        catch (CreateTopicsException)
         {
-            throw new Exception("Whoops, it seems that another process just created this topic.", e);
-        }
-    }
-
-    public void ConsumeContinuously(string topic, Action<TK, TV> action, CancellationToken ct)
-    {
-        using var consumer = _consBuilder.Build();
-        consumer.Subscribe(topic);
-        try
-        {
-            while (!ct.IsCancellationRequested)
-            {
-                var cr = consumer.Consume(ct);
-                action(cr.Message.Key, cr.Message.Value);
-            }
-        }
-        catch (OperationCanceledException)
-        {
-            //exception might have occurred since Ctrl-C was pressed.
-        }
-        finally
-        {
-            // Ensure the consumer leaves the group cleanly and final offsets are committed.
-            consumer.Close();
+            _logger?.Invoke("Whoops, it seems that another process just created this topic.");
         }
     }
 }

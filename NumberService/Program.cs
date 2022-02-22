@@ -43,7 +43,7 @@ class Program
     {
         Console.WriteLine("Initializing..");
 
-        _msgBus = new MessageBus<string, string>("numbers");
+        _msgBus = new MessageBus<string, string>();
         _prod = _msgBus.GetProducer();
         await Prerequisites();
 
@@ -53,7 +53,7 @@ class Program
             Cts.Cancel();
         };
 
-        var sub = _msgBus.GetSubscriber(TopicCmdName, ParseAction, Cts.Token);
+        var sub = _msgBus.GetSubscriber(TopicCmdName, "numbers", ParseAction, Cts.Token);
         Console.WriteLine("Awaiting");
         try
         {
