@@ -15,37 +15,14 @@ class Program
     private static readonly Random RNG = new();
 
     private static Producer<string, string> _prod = null!;
-
-    private static async Task Prerequisites()
-    {
-        var topics = _msgBus.GetTopics();
-        
-        if (!topics.Contains(TopicNumbers))
-        {
-            await CreateTopic(_msgBus, TopicNumbers);
-        }
-
-        static async Task CreateTopic<TK, TV>(MessageBus<TK, TV> mb, string topic)
-        {
-            Console.WriteLine($"Not found {topic}, trying to create");
-            try
-            {
-                await mb.CreateTopic(topic);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-        }
-    }
-
+    
     private static async Task Main()
     {
         Console.WriteLine("Initializing..");
 
         _msgBus = new MessageBus<string, string>();
         _prod = _msgBus.GetProducer();
-        await Prerequisites();
+        await _msgBus.EnsureTopicsCreated(TopicCmdName, TopicNumbers);
 
         Console.CancelKeyPress += (_, e) =>
         {

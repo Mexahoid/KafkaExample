@@ -32,25 +32,46 @@ public class MessageBus<TK, TV>
         return new Subscriber<TK, TV>(topic, action, group, _host, ct);
     }
 
-    public List<string> GetTopics()
+
+    public async Task EnsureTopicsCreated(params string[] topics)
     {
         using var adminClient = _adminBuilder.Build();
         var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
         var topicNames = metadata.Topics.Select(a => a.Topic).ToList();
-        return topicNames;
+
+        foreach (var topic in topics)
+        {
+            if (!topicNames.Contains(topic))
+            {
+                await CreateTopic(topic);
+                _logger?.Invoke("Successfully created.");
+            }
+            else
+            {
+                _logger?.Invoke($"Topic {topic} found, all's OK.");
+            }
+        }
     }
 
-    public async Task CreateTopic(string topic)
+    private async Task CreateTopic(string topic)
     {
-        using var adminClient = _adminBuilder.Build();
+        _logger?.Invoke($"Not found {topic}, trying to create");
         try
         {
-            await adminClient.CreateTopicsAsync(new[] {
-                new TopicSpecification { Name = topic, ReplicationFactor = 1, NumPartitions = 1 } });
+            using var adminClient = _adminBuilder.Build();
+            try
+            {
+                await adminClient.CreateTopicsAsync(new[] {
+                    new TopicSpecification { Name = topic, ReplicationFactor = 1, NumPartitions = 1 } });
+            }
+            catch (CreateTopicsException)
+            {
+                _logger?.Invoke("Whoops, it seems that another process just created this topic.");
+            }
         }
-        catch (CreateTopicsException)
+        catch (Exception e)
         {
-            _logger?.Invoke("Whoops, it seems that another process just created this topic.");
+            _logger?.Invoke(e.Message);
         }
     }
 }

@@ -37,7 +37,7 @@ public class MessageHost
     public async Task StartAsync(CancellationToken ct)
     {
         _ct = ct;
-        await Prerequisites();
+        await _msgBus.EnsureTopicsCreated(TopicCmdName, TopicNumbers, TopicBoys, TopicGirls);
         lock (_subscribers)
         {
             _inputQueue.Clear();
@@ -112,36 +112,6 @@ public class MessageHost
                     await actions[word].command();
             }
         }, ct);
-    }
-
-
-    private async Task Prerequisites()
-    {
-        var topics = _msgBus.GetTopics();
-
-        await CheckTopic(_msgBus, topics, TopicCmdName);
-        await CheckTopic(_msgBus, topics, TopicGirls);
-        await CheckTopic(_msgBus, topics, TopicBoys);
-        await CheckTopic(_msgBus, topics, TopicNumbers);
-
-        async Task CheckTopic<TK, TV>(MessageBus<TK, TV> mb, ICollection<string> topics, string topic)
-        {
-            if (topics.Contains(TopicNumbers))
-            {
-                OnLogger($"Topic {topic} found, all's OK.");
-                return;
-            }
-            OnLogger($"Not found {topic}, trying to create.");
-            try
-            {
-                await mb.CreateTopic(topic);
-                OnLogger("Succsessfully created.");
-            }
-            catch (Exception e)
-            {
-                OnLogger(e.Message);
-            }
-        }
     }
 
     private async Task GetBoyName()

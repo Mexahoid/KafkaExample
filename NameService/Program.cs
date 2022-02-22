@@ -30,47 +30,14 @@ class Program
     private static readonly CancellationTokenSource Cts = new();
     private static MessageBus<string, string> _msgBusNames = null!;
     private static Producer<string, string> _prod = null!;
-
-
-    private static async Task Prerequisites()
-    {
-        var topics = _msgBusNames.GetTopics();
-
-        if (!topics.Contains(TopicCmdName))
-        {
-            await CreateTopic(TopicCmdName);
-        }
-        if (!topics.Contains(TopicGirls))
-        {
-            await CreateTopic(TopicGirls);
-        }
-        if (!topics.Contains(TopicBoys))
-        {
-            await CreateTopic(TopicBoys);
-        }
-
-        static async Task CreateTopic(string topic)
-        {
-            Console.WriteLine($"Not found {topic}, trying to create");
-            try
-            {
-                await _msgBusNames.CreateTopic(topic);
-            }
-            catch (Exception e)
-            {
-                Console.WriteLine(e.Message);
-            }
-        }
-    }
-
-
+    
     static async Task Main()
     {
         Console.WriteLine("Initializing..");
 
         _msgBusNames = new MessageBus<string, string>(Console.WriteLine);
         _prod = _msgBusNames.GetProducer();
-        await Prerequisites();
+        await _msgBusNames.EnsureTopicsCreated(TopicCmdName, TopicBoys, TopicGirls);
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true; // prevent the process from terminating.
