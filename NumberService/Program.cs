@@ -20,9 +20,10 @@ class Program
     {
         Console.WriteLine("Initializing..");
 
-        _msgBus = new MessageBus<string, string>();
+
+        string[] topics = { TopicCmdName, TopicNumbers };
+        _msgBus = await MessageBus<string, string>.Create(topics, Console.WriteLine);
         _prod = _msgBus.GetProducer();
-        await _msgBus.EnsureTopicsCreated(TopicCmdName, TopicNumbers);
 
         Console.CancelKeyPress += (_, e) =>
         {

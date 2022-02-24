@@ -1,6 +1,5 @@
 ﻿using Confluent.Kafka;
 using Confluent.Kafka.Admin;
-using Confluent.Kafka.SyncOverAsync;
 namespace MessageBroker;
 
 public class MessageBus<TK, TV>
@@ -12,7 +11,7 @@ public class MessageBus<TK, TV>
 
     private readonly Action<string>? _logger;
 
-    public MessageBus(Action<string>? logger = default)
+    private MessageBus(Action<string>? logger = default)
     {
         _logger = logger;
         var config = new Dictionary<string, string>
@@ -21,7 +20,16 @@ public class MessageBus<TK, TV>
         };
         _adminBuilder = new AdminClientBuilder(config);
     }
-    
+
+    public static async Task<MessageBus<TK, TV>> Create(
+        IEnumerable<string> topics,
+        Action<string>? logger = default)
+    {
+        var mb = new MessageBus<TK, TV>(logger);
+        await mb.EnsureTopicsCreated(topics);
+        return mb;
+    } 
+
     public Producer<TK, TV> GetProducer()
     {
         return new Producer<TK, TV>(_host, _logger);
@@ -32,8 +40,7 @@ public class MessageBus<TK, TV>
         return new Subscriber<TK, TV>(topic, action, group, _host, ct);
     }
 
-
-    public async Task EnsureTopicsCreated(params string[] topics)
+    private async Task EnsureTopicsCreated(IEnumerable<string> topics)
     {
         using var adminClient = _adminBuilder.Build();
         var metadata = adminClient.GetMetadata(TimeSpan.FromSeconds(10));
@@ -43,35 +50,22 @@ public class MessageBus<TK, TV>
         {
             if (!topicNames.Contains(topic))
             {
-                await CreateTopic(topic);
-                _logger?.Invoke("Successfully created.");
+                _logger?.Invoke($"Not found {topic}, trying to create");
+                try
+                {
+                    await adminClient.CreateTopicsAsync(new[] {
+                        new TopicSpecification { Name = topic, ReplicationFactor = 1, NumPartitions = 1 } });
+                    _logger?.Invoke("Successfully created.");
+                }
+                catch (CreateTopicsException)
+                {
+                    _logger?.Invoke("Whoops, it seems that another process just created this topic.");
+                }
             }
             else
             {
                 _logger?.Invoke($"Topic {topic} found, all's OK.");
             }
-        }
-    }
-
-    private async Task CreateTopic(string topic)
-    {
-        _logger?.Invoke($"Not found {topic}, trying to create");
-        try
-        {
-            using var adminClient = _adminBuilder.Build();
-            try
-            {
-                await adminClient.CreateTopicsAsync(new[] {
-                    new TopicSpecification { Name = topic, ReplicationFactor = 1, NumPartitions = 1 } });
-            }
-            catch (CreateTopicsException)
-            {
-                _logger?.Invoke("Whoops, it seems that another process just created this topic.");
-            }
-        }
-        catch (Exception e)
-        {
-            _logger?.Invoke(e.Message);
         }
     }
 }

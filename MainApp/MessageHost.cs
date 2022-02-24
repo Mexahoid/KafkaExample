@@ -5,14 +5,14 @@ namespace MainApp;
 
 public class MessageHost
 {
-    private readonly MessageBus<string, string> _msgBus;
+    private MessageBus<string, string> _msgBus = null!;
 
     private const string TopicCmdName = "requests";
     private const string TopicGirls = "girls";
     private const string TopicBoys = "gachi";
     private const string TopicNumbers = "numbers";
 
-    private readonly Producer<string, string> _producer;
+    private Producer<string, string> _producer = null!;
     private CancellationToken _ct;
     
     private readonly List<Subscriber<string, string>> _subscribers;
@@ -26,10 +26,8 @@ public class MessageHost
     public MessageHost(Queue<string?> inputQueue, Action<string> logger)
     {
         _logger = logger;
-        _msgBus = new MessageBus<string, string>(logger);
         _inputQueue = inputQueue;
 
-        _producer = _msgBus.GetProducer();
 
         _subscribers = new List<Subscriber<string, string>>();
     }
@@ -37,7 +35,8 @@ public class MessageHost
     public async Task StartAsync(CancellationToken ct)
     {
         _ct = ct;
-        await _msgBus.EnsureTopicsCreated(TopicCmdName, TopicNumbers, TopicBoys, TopicGirls);
+        _msgBus = await MessageBus<string, string>.Create(new[] { TopicCmdName, TopicNumbers, TopicBoys, TopicGirls }, _logger);
+        _producer = _msgBus.GetProducer();
         lock (_subscribers)
         {
             _inputQueue.Clear();
@@ -51,17 +50,17 @@ public class MessageHost
             { "q", ("Quit program", Quit) }
         };
 
-        _subscribers.Add(_msgBus.GetSubscriber(TopicBoys, "names", (k, msg) =>
+        _subscribers.Add(_msgBus.GetSubscriber(TopicBoys, "names", (_, msg) =>
         {
             OnLogger($"Received ♂boy♂ name: {msg}");
         }, _ct));
 
-        _subscribers.Add(_msgBus.GetSubscriber(TopicGirls, "names", (k, msg) =>
+        _subscribers.Add(_msgBus.GetSubscriber(TopicGirls, "names", (_, msg) =>
         {
             OnLogger($"Received girl name: {msg}");
         }, _ct));
 
-        _subscribers.Add(_msgBus.GetSubscriber(TopicNumbers, "numbers", (k, msg) =>
+        _subscribers.Add(_msgBus.GetSubscriber(TopicNumbers, "numbers", (_, msg) =>
         {
             if (string.IsNullOrEmpty(msg))
                 return;

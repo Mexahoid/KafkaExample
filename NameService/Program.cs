@@ -35,9 +35,10 @@ class Program
     {
         Console.WriteLine("Initializing..");
 
-        _msgBusNames = new MessageBus<string, string>(Console.WriteLine);
+        string[] topics = {TopicCmdName, TopicBoys, TopicGirls};
+
+        _msgBusNames = await MessageBus<string, string>.Create(topics, Console.WriteLine);
         _prod = _msgBusNames.GetProducer();
-        await _msgBusNames.EnsureTopicsCreated(TopicCmdName, TopicBoys, TopicGirls);
         Console.CancelKeyPress += (_, e) =>
         {
             e.Cancel = true; // prevent the process from terminating.
